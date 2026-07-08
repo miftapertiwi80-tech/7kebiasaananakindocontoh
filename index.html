@@ -1,0 +1,504 @@
+import React, { useState, useEffect } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+
+const CONFIG = {
+  app_title: "Jurnal 7 Kebiasaan Anak Indonesia Hebat",
+  welcome_message: "Tulis namamu di sini...",
+  start_button_text: "Mulai Petualangan",
+  save_button_text: "Simpan Jurnal",
+  greeting_text: "Jurnal Hari Ini",
+  colors: {
+    background: "#f9fafb",
+    card: "#ffffff",
+    text: "#1f2937",
+    primary: "#37b595",
+    accent: "#fed935"
+  }
+};
+
+const EMOJIS = ['🐯', '🐱', '🐼', '🐨', '🐰', '🐮'];
+
+const HABITS = [
+  { id: 'bangun', title: 'Bangun Pagi', icon: '☀️', img: 'https://i.imgur.com/ph8DfAY.png' },
+  { id: 'ibadah', title: 'Beribadah', icon: '🤲', img: 'https://i.imgur.com/rgc5kMo.png' },
+  { id: 'olahraga', title: 'Berolahraga', icon: '🏃‍♂️', img: 'https://i.imgur.com/L1V2647.png' },
+  { id: 'makan', title: 'Makan', icon: '🍽️', img: 'https://i.imgur.com/25KXj48.png' },
+  { id: 'belajar', title: 'Belajar', icon: '📚', img: 'https://i.imgur.com/7B2lV5G.png' },
+  { id: 'masyarakat', title: 'Bermasyarakat', icon: '🤝', img: 'https://i.imgur.com/CYmktkZ.png' },
+  { id: 'tidur', title: 'Tidur Cepat', icon: '🌙', img: 'https://i.imgur.com/0BToZCa.png' }
+];
+
+const DEFAULT_FORM = {
+  bangun: "",
+  ibadah: {
+    agama: "",
+    islam_subuh: false, islam_dzuhur: false, islam_ashar: false, islam_maghrib: false, islam_isya: false, islam_mengaji: false, islam_mengaji_text: "", islam_sunnah: false, islam_sunnah_text: "",
+    kristen_saat_teduh: false, kristen_doa_pagi: false, kristen_doa_makan: false, kristen_doa_malam: false, kristen_pujian: false, kristen_hafal_ayat: false,
+    katolik_doa_pagi: false, katolik_doa_makan: false, katolik_doa_malam: false, katolik_baca_kitab: false, katolik_rosario: false, katolik_examen: false,
+    hindu_tri_sandya_pagi: false, hindu_tri_sandya_siang: false, hindu_tri_sandya_sore: false, hindu_ngejot: false, hindu_sloka: false, hindu_japa_mantra: false,
+    buddha_puja_pagi: false, buddha_puja_sore: false, buddha_meditasi: false, buddha_dana: false, buddha_sutra: false,
+    khonghucu_jing_xiang_pagi: false, khonghucu_jing_xiang_sore: false, khonghucu_jing_zuo: false, khonghucu_kitab: false, khonghucu_bakti: false,
+  },
+  olahraga: "", olahraga_lainnya: "",
+  makan_pagi: "", makan_siang: "", makan_siang_lainnya: "", makan_malam: "",
+  belajar: "",
+  masyarakat: "", masyarakat_lainnya: "",
+  tidur: ""
+};
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState({ name: '', avatar: '' });
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [expandedCard, setExpandedCard] = useState('bangun');
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // Inject Font
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+    
+    // Apply variables to root for recolorables
+    const root = document.documentElement;
+    root.style.setProperty('--c-bg', CONFIG.colors.background);
+    root.style.setProperty('--c-card', CONFIG.colors.card);
+    root.style.setProperty('--c-text', CONFIG.colors.text);
+    root.style.setProperty('--c-primary', CONFIG.colors.primary);
+    root.style.setProperty('--c-accent', CONFIG.colors.accent);
+
+    return () => document.head.removeChild(link);
+  }, []);
+
+  const handleUpdateForm = (key, value) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleUpdateIbadah = (key, value) => {
+    setForm(prev => ({
+      ...prev,
+      ibadah: { ...prev.ibadah, [key]: value }
+    }));
+  };
+
+  const calculateProgress = () => {
+    let filledCount = 0;
+
+    if (form.bangun) filledCount++;
+    if (form.olahraga || form.olahraga_lainnya) filledCount++;
+    if (form.makan_pagi || form.makan_siang || form.makan_malam) filledCount++;
+    if (form.belajar.trim()) filledCount++;
+    if (form.masyarakat || form.masyarakat_lainnya) filledCount++;
+    if (form.tidur) filledCount++;
+
+    if (form.ibadah.agama) {
+      const pfx = form.ibadah.agama.toLowerCase();
+      const ibadahFields = Object.entries(form.ibadah).filter(([k]) => k.startsWith(pfx));
+      const hasAnyIbadah = ibadahFields.some(([k, v]) => {
+        if (typeof v === 'boolean') return v;
+        if (typeof v === 'string') return v.trim() !== '';
+        return false;
+      });
+      if (hasAnyIbadah) filledCount++;
+    }
+
+    return (filledCount / 7) * 100;
+  };
+
+  const progress = calculateProgress();
+
+  const handleSave = () => {
+    if (progress === 0 || isSaving) return;
+    setIsSaving(true);
+    
+    // Format payload as requested by DATA SDK Prompt
+    const payload = {
+      id: `journal_${Date.now()}`,
+      created_at: new Date().toISOString(),
+      user_name: user.name,
+      user_avatar: user.avatar,
+      bangun_pagi: form.bangun,
+      olahraga: form.olahraga === 'Lainnya' ? form.olahraga_lainnya : form.olahraga,
+      makan: { pagi: form.makan_pagi, siang: form.makan_siang === 'Lainnya' ? form.makan_siang_lainnya : form.makan_siang, malam: form.makan_malam },
+      belajar: form.belajar,
+      masyarakat: form.masyarakat === 'Lainnya' ? form.masyarakat_lainnya : form.masyarakat,
+      tidur_cepat: form.tidur,
+      ibadah: { agama: form.ibadah.agama }
+    };
+
+    // Format all boolean checkboxes to "SUDAH" / "BELUM" strings
+    Object.keys(form.ibadah).forEach(key => {
+      if(key !== 'agama' && !key.endsWith('_text')) {
+        payload.ibadah[key] = form.ibadah[key] ? "SUDAH" : "BELUM";
+      } else if (key.endsWith('_text')) {
+        payload.ibadah[key] = form.ibadah[key];
+      }
+    });
+
+    console.log("Saving to Data SDK...", payload);
+
+    setTimeout(() => {
+      setIsSaving(false);
+      setShowSuccess(true);
+      setForm(DEFAULT_FORM);
+      setExpandedCard(null);
+      
+      setTimeout(() => {
+        setShowSuccess(false);
+      }, 2000);
+    }, 1200);
+  };
+
+  const styles = {
+    app: { fontFamily: "'Fredoka', sans-serif", backgroundColor: "var(--c-bg)", color: "var(--c-text)", minHeight: "100vh" },
+    btn3d: "shadow-[0_6px_0_rgba(0,0,0,0.15)] transition-all duration-100 hover:-translate-y-[2px] active:translate-y-[3px] active:shadow-[0_3px_0_rgba(0,0,0,0.15)] disabled:shadow-none disabled:translate-y-0 disabled:opacity-50",
+    btnSelect: (isSelected) => `py-2 px-3 rounded-2xl font-medium border-2 transition-all ${isSelected ? 'bg-[var(--c-accent)] border-[var(--c-primary)] text-gray-900' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`,
+    input: "w-full border-2 border-gray-200 rounded-2xl p-3 focus:border-[var(--c-primary)] focus:outline-none transition-colors",
+    checkboxLabel: "flex items-center gap-3 p-3 rounded-2xl border-2 border-gray-100 bg-gray-50 cursor-pointer active:bg-gray-100 transition-colors"
+  };
+
+  if (!isLoggedIn) {
+    const isLoginValid = user.name.trim() !== '' && user.avatar !== '';
+    return (
+      <div style={styles.app} className="flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-[var(--c-card)] p-8 rounded-[2rem] shadow-xl text-center space-y-8">
+          <h1 className="text-3xl font-bold text-[var(--c-primary)] leading-snug">
+            {CONFIG.app_title}
+          </h1>
+          
+          <div className="space-y-4">
+            <input 
+              type="text" 
+              placeholder={CONFIG.welcome_message}
+              className={`${styles.input} text-center text-xl font-medium`}
+              value={user.name}
+              onChange={(e) => setUser({...user, name: e.target.value})}
+            />
+            
+            <p className="text-sm text-gray-500 font-medium">Pilih Avatar Kamu:</p>
+            <div className="grid grid-cols-3 gap-4">
+              {EMOJIS.map(emoji => (
+                <button
+                  key={emoji}
+                  onClick={() => setUser({...user, avatar: emoji})}
+                  className={`text-5xl p-4 rounded-3xl transition-all ${user.avatar === emoji ? 'bg-[var(--c-accent)] scale-110 shadow-lg' : 'bg-gray-50 hover:bg-gray-100 opacity-60 hover:opacity-100'}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            disabled={!isLoginValid}
+            onClick={() => setIsLoggedIn(true)}
+            className={`w-full py-4 text-xl font-bold rounded-[2rem] ${styles.btn3d} ${isLoginValid ? 'bg-[var(--c-primary)] text-white' : 'bg-gray-300 text-gray-500'}`}
+          >
+            {CONFIG.start_button_text}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const renderHabitContent = (id) => {
+    switch (id) {
+      case 'bangun':
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            {['04:00', '04:30', '05:00', '05:30'].map(time => (
+              <button key={time} onClick={() => handleUpdateForm('bangun', time)} className={styles.btnSelect(form.bangun === time)}>
+                {time}
+              </button>
+            ))}
+          </div>
+        );
+      case 'ibadah':
+        if (!form.ibadah.agama) {
+          return (
+            <div className="grid grid-cols-2 gap-3">
+              {['Islam', 'Kristen', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'].map(agama => (
+                <button key={agama} onClick={() => handleUpdateIbadah('agama', agama)} className={styles.btnSelect(false)}>
+                  {agama}
+                </button>
+              ))}
+            </div>
+          );
+        }
+        
+        const agama = form.ibadah.agama;
+        return (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="font-bold text-[var(--c-primary)]">Agama: {agama}</span>
+              <button onClick={() => handleUpdateIbadah('agama', '')} className="text-xs font-bold bg-gray-200 py-1 px-3 rounded-full text-gray-600 hover:bg-gray-300">Ganti Agama</button>
+            </div>
+            
+            {agama === 'Islam' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {['Subuh', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'].map(sholat => (
+                    <label key={sholat} className={styles.checkboxLabel}>
+                      <input type="checkbox" checked={form.ibadah[`islam_${sholat.toLowerCase()}`]} onChange={(e) => handleUpdateIbadah(`islam_${sholat.toLowerCase()}`, e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                      <span className="font-medium text-gray-700">{sholat}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah.islam_mengaji} onChange={(e) => handleUpdateIbadah('islam_mengaji', e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">Mengaji</span>
+                  </label>
+                  {form.ibadah.islam_mengaji && (
+                    <input type="text" placeholder="Surat / Ayat yang dibaca..." value={form.ibadah.islam_mengaji_text} onChange={(e) => handleUpdateIbadah('islam_mengaji_text', e.target.value)} className={styles.input} />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah.islam_sunnah} onChange={(e) => handleUpdateIbadah('islam_sunnah', e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">Sholat Sunnah</span>
+                  </label>
+                  {form.ibadah.islam_sunnah && (
+                    <input type="text" placeholder="Sholat sunnah apa? (contoh: Dhuha)" value={form.ibadah.islam_sunnah_text} onChange={(e) => handleUpdateIbadah('islam_sunnah_text', e.target.value)} className={styles.input} />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {agama === 'Kristen' && (
+              <div className="grid grid-cols-1 gap-3">
+                {['Saat Teduh', 'Doa Pagi', 'Doa Makan', 'Doa Malam', 'Pujian', 'Hafal Ayat'].map(item => (
+                   <label key={item} className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah[`kristen_${item.toLowerCase().replace(' ', '_')}`]} onChange={(e) => handleUpdateIbadah(`kristen_${item.toLowerCase().replace(' ', '_')}`, e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">{item}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {agama === 'Katolik' && (
+              <div className="grid grid-cols-1 gap-3">
+                {['Doa Pagi', 'Doa Makan', 'Doa Malam', 'Baca Kitab', 'Rosario', 'Examen'].map(item => (
+                   <label key={item} className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah[`katolik_${item.toLowerCase().replace(' ', '_')}`]} onChange={(e) => handleUpdateIbadah(`katolik_${item.toLowerCase().replace(' ', '_')}`, e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">{item}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {agama === 'Hindu' && (
+              <div className="grid grid-cols-1 gap-3">
+                {['Tri Sandya Pagi', 'Tri Sandya Siang', 'Tri Sandya Sore', 'Ngejot', 'Sloka', 'Japa Mantra'].map(item => (
+                   <label key={item} className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah[`hindu_${item.toLowerCase().replace(/ /g, '_')}`]} onChange={(e) => handleUpdateIbadah(`hindu_${item.toLowerCase().replace(/ /g, '_')}`, e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">{item}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {agama === 'Buddha' && (
+              <div className="grid grid-cols-1 gap-3">
+                {['Puja Pagi', 'Puja Sore', 'Meditasi', 'Dana', 'Sutra'].map(item => (
+                   <label key={item} className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah[`buddha_${item.toLowerCase().replace(' ', '_')}`]} onChange={(e) => handleUpdateIbadah(`buddha_${item.toLowerCase().replace(' ', '_')}`, e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">{item}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {agama === 'Khonghucu' && (
+              <div className="grid grid-cols-1 gap-3">
+                {['Jing Xiang Pagi', 'Jing Xiang Sore', 'Jing Zuo', 'Kitab', 'Bakti'].map(item => (
+                   <label key={item} className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={form.ibadah[`khonghucu_${item.toLowerCase().replace(/ /g, '_')}`]} onChange={(e) => handleUpdateIbadah(`khonghucu_${item.toLowerCase().replace(/ /g, '_')}`, e.target.checked)} className="w-5 h-5 accent-[var(--c-primary)]" />
+                    <span className="font-medium text-gray-700">{item}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'olahraga':
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              {['Senam', 'Lari', 'Sepeda', 'Sepak Bola', 'Lainnya'].map(item => (
+                <button key={item} onClick={() => handleUpdateForm('olahraga', item)} className={styles.btnSelect(form.olahraga === item)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+            {form.olahraga === 'Lainnya' && (
+              <input type="text" placeholder="Tulis olahraga apa (contoh: Renang)" value={form.olahraga_lainnya} onChange={(e) => handleUpdateForm('olahraga_lainnya', e.target.value)} className={styles.input} />
+            )}
+          </div>
+        );
+
+      case 'makan':
+        return (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-bold text-gray-500 mb-1">Sarapan Pagi</p>
+              <input type="text" placeholder="Makan apa pagi ini?" value={form.makan_pagi} onChange={(e) => handleUpdateForm('makan_pagi', e.target.value)} className={styles.input} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-500 mb-1">Makan Siang</p>
+              <div className="grid grid-cols-2 gap-3 mb-2">
+                <button onClick={() => handleUpdateForm('makan_siang', 'MBG')} className={styles.btnSelect(form.makan_siang === 'MBG')}>MBG</button>
+                <button onClick={() => handleUpdateForm('makan_siang', 'Lainnya')} className={styles.btnSelect(form.makan_siang === 'Lainnya')}>Lainnya</button>
+              </div>
+              {form.makan_siang === 'Lainnya' && (
+                <input type="text" placeholder="Makan apa siang ini?" value={form.makan_siang_lainnya} onChange={(e) => handleUpdateForm('makan_siang_lainnya', e.target.value)} className={styles.input} />
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-500 mb-1">Makan Malam</p>
+              <input type="text" placeholder="Makan apa malam ini?" value={form.makan_malam} onChange={(e) => handleUpdateForm('makan_malam', e.target.value)} className={styles.input} />
+            </div>
+          </div>
+        );
+
+      case 'belajar':
+        return (
+          <textarea 
+            rows="4" 
+            placeholder="Ceritakan apa yang kamu pelajari hari ini..." 
+            value={form.belajar} 
+            onChange={(e) => handleUpdateForm('belajar', e.target.value)} 
+            className={`${styles.input} resize-none`}
+          ></textarea>
+        );
+
+      case 'masyarakat':
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              {['Bantu Teman', 'Sapa Guru', 'Gotong Royong', 'Sedekah', 'Lainnya'].map(item => (
+                <button key={item} onClick={() => handleUpdateForm('masyarakat', item)} className={styles.btnSelect(form.masyarakat === item)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+            {form.masyarakat === 'Lainnya' && (
+              <input type="text" placeholder="Kebaikan apa? (contoh: Memberi makan kucing)" value={form.masyarakat_lainnya} onChange={(e) => handleUpdateForm('masyarakat_lainnya', e.target.value)} className={styles.input} />
+            )}
+          </div>
+        );
+
+      case 'tidur':
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            {['20:00', '20:30', '21:00', '>21:00'].map(time => (
+              <button key={time} onClick={() => handleUpdateForm('tidur', time)} className={styles.btnSelect(form.tidur === time)}>
+                {time}
+              </button>
+            ))}
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div style={styles.app} className="w-full">
+      <div className="max-w-md mx-auto relative pb-24 min-h-screen">
+        
+        {/* Header */}
+        <header className="bg-[var(--c-primary)] rounded-b-3xl pt-8 pb-6 px-6 text-white shadow-md relative z-10">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="text-5xl bg-white/20 p-2 rounded-2xl">{user.avatar}</div>
+            <div>
+              <h2 className="text-2xl font-bold leading-tight">{user.name}</h2>
+              <p className="opacity-90 font-medium">{CONFIG.greeting_text}</p>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm font-bold opacity-90">
+              <span>Progress Jurnal</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+            <div className="h-3 bg-black/20 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-[var(--c-accent)] rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+        </header>
+
+        {/* Success Modal */}
+        {showSuccess && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="bg-white p-8 rounded-[2rem] shadow-2xl text-center transform scale-100 animate-bounce-short">
+              <div className="text-6xl mb-4">✨</div>
+              <h3 className="text-2xl font-bold text-[var(--c-primary)]">Jurnal berhasil disimpan!</h3>
+              <p className="text-gray-500 font-medium mt-2">Terima kasih sudah menjadi anak hebat.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Dashboard Content */}
+        <main className="p-4 space-y-4 relative z-0 -mt-2">
+          {HABITS.map(habit => {
+            const isExpanded = expandedCard === habit.id;
+            return (
+              <div key={habit.id} className="bg-[var(--c-card)] rounded-3xl shadow-sm border border-gray-100 overflow-hidden transition-all duration-300">
+                <button 
+                  onClick={() => setExpandedCard(isExpanded ? null : habit.id)}
+                  className="w-full p-4 flex items-center justify-between text-left focus:outline-none"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center overflow-hidden shrink-0">
+                      <img 
+                        src={habit.img} 
+                        alt={habit.title} 
+                        className="w-full h-full object-cover" 
+                        onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = `<span class="text-3xl">${habit.icon}</span>`; }} 
+                      />
+                    </div>
+                    <span className="text-lg font-bold text-[var(--c-text)]">{habit.title}</span>
+                  </div>
+                  <div className={`p-2 rounded-full transition-colors ${isExpanded ? 'bg-[var(--c-accent)]/20 text-[var(--c-primary)]' : 'bg-gray-50 text-gray-400'}`}>
+                    {isExpanded ? <ChevronUp size={24} strokeWidth={3} /> : <ChevronDown size={24} strokeWidth={3} />}
+                  </div>
+                </button>
+                
+                <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                  <div className="p-4 pt-0 border-t border-gray-50 mt-1">
+                    {renderHabitContent(habit.id)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </main>
+
+        {/* Footer */}
+        <footer className="text-center p-6 text-xs opacity-40 font-medium text-[var(--c-text)]">
+          dari Noval Firdaus untuk Anak Indonesia Hebat - 2026
+        </footer>
+
+        {/* Fixed Save Button Area */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 max-w-md mx-auto bg-gradient-to-t from-[var(--c-bg)] via-[var(--c-bg)] to-transparent z-40 pb-6">
+          <button
+            onClick={handleSave}
+            disabled={progress === 0 || isSaving}
+            className={`w-full py-4 text-xl font-bold rounded-[2rem] ${styles.btn3d} ${progress > 0 ? 'bg-[var(--c-primary)] text-white' : 'bg-gray-300 text-gray-500'}`}
+          >
+            {isSaving ? '💾 Menyimpan...' : CONFIG.save_button_text}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
